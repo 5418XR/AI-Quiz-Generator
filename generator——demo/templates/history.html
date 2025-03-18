@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>历史记录 - 员工培训题目生成器</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 800px;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .btn-primary {
+            background-color: #4A6FDC;
+            border-color: #4A6FDC;
+        }
+        .btn-primary:hover {
+            background-color: #3a5bb9;
+            border-color: #3a5bb9;
+        }
+        .nav-pills .nav-link.active {
+            background-color: #4A6FDC;
+        }
+        .conversation-item {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .conversation-item:hover {
+            background-color: #f1f5fd;
+        }
+        .message-box {
+            white-space: pre-line;
+            background-color: #f1f5fd;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .loading {
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-5">
+        <header class="text-center mb-5">
+            <h1 class="display-4">员工培训题目生成器</h1>
+            <p class="lead">查看历史生成的题目记录</p>
+        </header>
+
+        <ul class="nav nav-pills mb-4 justify-content-center">
+            <li class="nav-item">
+                <a class="nav-link" href="/">题目生成</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link active" href="/history">历史记录</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/about">关于</a>
+            </li>
+        </ul>
+
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">历史会话</div>
+                    <div class="card-body p-0">
+                        <div id="conversationLoading" class="loading">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">加载中...</span>
+                            </div>
+                        </div>
+                        <ul class="list-group list-group-flush" id="conversationList">
+                            <!-- 会话列表将通过JS动态填充 -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">会话内容</div>
+                    <div class="card-body">
+                        <div id="messageLoading" class="loading" style="display: none;">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">加载中...</span>
+                            </div>
+                        </div>
+                        <div id="noConversationSelected" class="text-center py-5">
+                            <p class="text-muted">选择左侧会话查看详细内容</p>
+                        </div>
+                        <div id="messagesContainer" style="display: none;">
+                            <!-- 消息内容将通过JS动态填充 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const conversationList = document.getElementById('conversationList');
+            const messagesContainer = document.getElementById('messagesContainer');
+            const noConversationSelected = document.getElementById('noConversationSelected');
+            const conversationLoading = document.getElementById('conversationLoading');
+            const messageLoading = document.getElementById('messageLoading');
+            
+            // 格式化日期
+            function formatDate(timestamp) {
+                const date = new Date(timestamp * 1000);
+                return date.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            }
+            
+            // 加载会话列表
+            async function loadConversations() {
+                try {
+                    conversationLoading.style.display = 'flex';
+                    
+                    const response = await fetch('/api/conversations');
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        conversationList.innerHTML = '';
+                        
+                        if (data.conversations.length === 0) {
+                            conversationList.innerHTML = '<li class="list-group-item text-center text-muted">暂无历史记录</li>';
+                        } else {
+                            data.conversations.forEach(conv => {
+                                const li = document.createElement('li');
+                                li.className = 'list-group-item conversation-item';
+                                li.setAttribute('data-id', conv.id);
+                                
+                                const title = document.createElement('div');
+                                title.className = 'fw-bold';
+                                title.textContent = conv.name || '未命名会话';
+                                
+                                const time = document.createElement('div');
+                                time.className = 'text-muted small';
+                                time.textContent = formatDate(conv.created_at);
+                                
+                                li.appendChild(title);
+                                li.appendChild(time);
+                                
+                                li.addEventListener('click', () => loadMessages(conv.id));
+                                
+                                conversationList.appendChild(li);
+                            });
+                        }
+                    } else {
+                        alert('加载会话失败：' + data.error);
+                    }
+                } catch (error) {
+                    alert('请求失败：' + error);
+                } finally {
+                    conversationLoading.style.display = 'none';
+                }
+            }
+            
+            // 加载特定会话的消息
+            async function loadMessages(conversationId) {
+                try {
+                    // 高亮选中的会话
+                    document.querySelectorAll('.conversation-item').forEach(item => {
+                        item.classList.remove('active', 'bg-light');
+                    });
+                    
+                    document.querySelector(`[data-id="${conversationId}"]`)?.classList.add('active', 'bg-light');
+                    
+                    // 显示加载中
+                    noConversationSelected.style.display = 'none';
+                    messagesContainer.style.display = 'none';
+                    messageLoading.style.display = 'flex';
+                    
+                    const response = await fetch(`/api/conversation/${conversationId}`);
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        messagesContainer.innerHTML = '';
+                        
+                        // 按创建时间正序排列消息
+                        const sortedMessages = data.messages.sort((a, b) => a.created_at - b.created_at);
+                        
+                        sortedMessages.forEach(msg => {
+                            // 用户提问
+                            const userDiv = document.createElement('div');
+                            userDiv.className = 'message-box bg-light mb-3';
+                            
+                            const userHeader = document.createElement('div');
+                            userHeader.className = 'fw-bold mb-2';
+                            userHeader.innerHTML = '🙋 问题';
+                            
+                            const userContent = document.createElement('div');
+                            userContent.textContent = msg.query;
+                            
+                            userDiv.appendChild(userHeader);
+                            userDiv.appendChild(userContent);
+                            messagesContainer.appendChild(userDiv);
+                            
+                            // AI回答
+                            const aiDiv = document.createElement('div');
+                            aiDiv.className = 'message-box';
+                            
+                            const aiHeader = document.createElement('div');
+                            aiHeader.className = 'fw-bold mb-2';
+                            aiHeader.innerHTML = '🤖 回答';
+                            
+                            const aiContent = document.createElement('div');
+                            aiContent.textContent = msg.answer;
+                            
+                            const timeInfo = document.createElement('div');
+                            timeInfo.className = 'text-end text-muted small mt-2';
+                            timeInfo.textContent = formatDate(msg.created_at);
+                            
+                            aiDiv.appendChild(aiHeader);
+                            aiDiv.appendChild(aiContent);
+                            aiDiv.appendChild(timeInfo);
+                            messagesContainer.appendChild(aiDiv);
+                        });
+                        
+                        // 显示消息区域
+                        messagesContainer.style.display = 'block';
+                    } else {
+                        alert('加载消息失败：' + data.error);
+                    }
+                } catch (error) {
+                    alert('请求失败：' + error);
+                } finally {
+                    messageLoading.style.display = 'none';
+                }
+            }
+            
+            // 初始加载会话列表
+            loadConversations();
+        });
+    </script>
+</body>
+</html>

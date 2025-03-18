@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>员工培训题目生成器</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 800px;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .btn-primary {
+            background-color: #4A6FDC;
+            border-color: #4A6FDC;
+        }
+        .btn-primary:hover {
+            background-color: #3a5bb9;
+            border-color: #3a5bb9;
+        }
+        .loading {
+            display: none;
+        }
+        .question-box {
+            white-space: pre-line;
+            background-color: #f1f5fd;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .nav-pills .nav-link.active {
+            background-color: #4A6FDC;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-5">
+        <header class="text-center mb-5">
+            <h1 class="display-4">员工培训题目生成器</h1>
+            <p class="lead">基于AI自动生成适合员工培训的各项目题目</p>
+        </header>
+
+        <ul class="nav nav-pills mb-4 justify-content-center">
+            <li class="nav-item">
+                <a class="nav-link active" href="/">题目生成</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/history">历史记录</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="/about">关于</a>
+            </li>
+        </ul>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title mb-4">生成设置</h5>
+                <form id="questionForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="grade" class="form-label">年度</label>
+                            <select class="form-select" id="grade" name="grade" required>
+                                <option value="18年">18年</option>
+                                <option value="19年">19年</option>
+                                <option value="20年">20年</option>
+                                <option value="21年">21年</option>
+                                <option value="22年">22年</option>
+                                <option value="23年">23年</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="subject" class="form-label">项目</label>
+                            <select class="form-select" id="subject" name="subject" required>
+                                {% for subject in subjects %}
+                                <option value="{{ subject }}">{{ subject }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="difficulty" class="form-label">难度</label>
+                            <select class="form-select" id="difficulty" name="difficulty" required>
+                                {% for level in difficulty_levels %}
+                                <option value="{{ level }}">{{ level }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="questionType" class="form-label">题型</label>
+                            <select class="form-select" id="questionType" name="questionType" required>
+                                {% for type in question_types %}
+                                <option value="{{ type }}">{{ type }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="count" class="form-label">题目数量</label>
+                            <select class="form-select" id="count" name="count" required>
+                                <option value="1">1题</option>
+                                <option value="3">3题</option>
+                                <option value="5" selected>5题</option>
+                                <option value="10">10题</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg" id="generateBtn">
+                            生成题目
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="loading text-center py-4" id="loadingIndicator">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">加载中...</span>
+            </div>
+            <p class="mt-2">正在生成题目，请稍候...</p>
+        </div>
+
+        <div id="resultsContainer" style="display: none;">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">生成结果</h5>
+                    <div class="d-flex justify-content-between mb-3">
+                        <div>
+                            <span class="badge bg-primary" id="resultSubject"></span>
+                            <span class="badge bg-secondary" id="resultGrade"></span>
+                            <span class="badge bg-info text-dark" id="resultDifficulty"></span>
+                            <span class="badge bg-warning text-dark" id="resultType"></span>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-outline-success me-2" id="downloadWordBtn">
+                                下载Word文档
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary" id="copyBtn">
+                                复制全部
+                            </button>
+                        </div>
+                    </div>
+                    <div class="question-box" id="questionResults"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('questionForm');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const resultsContainer = document.getElementById('resultsContainer');
+            const questionResults = document.getElementById('questionResults');
+            const copyBtn = document.getElementById('copyBtn');
+            const downloadWordBtn = document.getElementById('downloadWordBtn');
+            
+            // 元数据标签
+            const resultSubject = document.getElementById('resultSubject');
+            const resultGrade = document.getElementById('resultGrade');
+            const resultDifficulty = document.getElementById('resultDifficulty');
+            const resultType = document.getElementById('resultType');
+            
+            // 保存最近生成的题目数据
+            let lastGeneratedData = null;
+
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                // 显示加载中
+                loadingIndicator.style.display = 'block';
+                resultsContainer.style.display = 'none';
+                
+                // 获取表单数据
+                const formData = {
+                    subject: document.getElementById('subject').value,
+                    difficulty: document.getElementById('difficulty').value,
+                    question_type: document.getElementById('questionType').value,
+                    grade: document.getElementById('grade').value,
+                    count: document.getElementById('count').value
+                };
+                
+                try {
+                    // 发送API请求
+                    const response = await fetch('/api/generate-questions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(formData)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // 保存生成的数据，供下载使用
+                        lastGeneratedData = data;
+                        
+                        // 更新结果
+                        questionResults.textContent = data.questions;
+                        
+                        // 更新元数据标签
+                        resultSubject.textContent = data.metadata.subject;
+                        resultGrade.textContent = data.metadata.grade;
+                        resultDifficulty.textContent = data.metadata.difficulty;
+                        resultType.textContent = data.metadata.question_type;
+                        
+                        // 显示结果区域
+                        resultsContainer.style.display = 'block';
+                    } else {
+                        alert('生成题目时出错：' + data.error);
+                    }
+                } catch (error) {
+                    alert('请求失败：' + error);
+                }
+                
+                // 隐藏加载中
+                loadingIndicator.style.display = 'none';
+            });
+            
+            // 复制按钮功能
+            copyBtn.addEventListener('click', function() {
+                const textToCopy = questionResults.textContent;
+                navigator.clipboard.writeText(textToCopy)
+                    .then(() => {
+                        const originalText = copyBtn.textContent;
+                        copyBtn.textContent = '已复制!';
+                        setTimeout(() => {
+                            copyBtn.textContent = originalText;
+                        }, 2000);
+                    })
+                    .catch(err => {
+                        alert('复制失败：' + err);
+                    });
+            });
+            
+            // 下载Word文档按钮功能
+            downloadWordBtn.addEventListener('click', async function() {
+                if (!lastGeneratedData) {
+                    alert('请先生成题目');
+                    return;
+                }
+                
+                try {
+                    downloadWordBtn.disabled = true;
+                    downloadWordBtn.textContent = '准备下载...';
+                    
+                    // 发送API请求生成Word文档
+                    const response = await fetch('/api/download-word', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            questions: lastGeneratedData.questions,
+                            metadata: lastGeneratedData.metadata
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('下载失败，请重试');
+                    }
+                    
+                    // 获取文件名
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    let filename = '题目.docx';
+                    if (contentDisposition) {
+                        const match = contentDisposition.match(/filename="(.+)"/);
+                        if (match && match[1]) {
+                            filename = match[1];
+                        }
+                    }
+                    
+                    // 下载文件
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    downloadWordBtn.textContent = '下载成功!';
+                    setTimeout(() => {
+                        downloadWordBtn.textContent = '下载Word文档';
+                        downloadWordBtn.disabled = false;
+                    }, 2000);
+                } catch (error) {
+                    alert('下载失败：' + error);
+                    downloadWordBtn.textContent = '下载Word文档';
+                    downloadWordBtn.disabled = false;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
